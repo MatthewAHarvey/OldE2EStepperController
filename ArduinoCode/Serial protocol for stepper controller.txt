@@ -1,0 +1,59 @@
+Serial protocol for stepper controller
+
+Messages to arduino in form
+
+SAD1234
+
+where S can be [S,G] for set or get parameter
+A can be [A,B,E] for Analyser 1, Analyser 2, Electron Gun.
+D can be [D,L,U] Delay. The delay is in milliseconds
+1234 is up to a four digit integer. If it is a delay, then it is an integer representing the millisecond delay. If it is an angle, the least significant figure is the decimal angle. For example SB900 would move the electron gun to 90.0 degrees. SA475 would move analyser 1 to 47.5 degrees
+
+GBD
+
+If electron gun is in detection plane, the analysers have a more restricted angular space.
+When the electron gun is at an angle greater than X, the analysers can move further around, as long as they don't crash in to each other.
+
+Angular conditions that can be set
+1. Analysers must not get closer together than X degrees. Let's say it's 20 degrees. That means that if A1 is at 10 degrees, A2 can not be less than 10 degrees. If A1 is at 0 degrees, A2 must not be less than 20 etc. If A1 is at 45 degrees, A2 must not be less than -25 degrees. For the small angles, they just add. For large angles, where the combined angle is greater than 180 degrees, the combined angle must be less than 360 - X. For the case where they must not get within 20 degrees of each other as above, if A1 is at 175 degrees, A2 must not be greater than 360 -20 - 175 = 165. For this to work, need to tell arduino the angle X. 
+
+Arduino must always check that (X < A1A2 angle < (360 - X)) == true.
+
+2. If the electron gun angle is greater than Y (apparently 70°), the analysers can run beyond their usual limits
+
+
+Analyser min separation
+EGun min angle
+EGun max angle
+EGun threshold angle
+E Gun in plane (<70°)
+	Analyser1 min angle 
+	Analyser1 max angle
+	Analyser2 min angle
+	Analyser2 max angle
+E Gun in plane (<70°)
+	Analyser1 min angle 
+	Analyser1 max angle
+	Analyser2 min angle
+	Analyser2 max angle
+
+Must also check if an analyser is in the way before moving electron gun.
+
+Stepper class
+	.begin()
+// The step format is the state to set the stepper input pins to.
+// bit0 = A+
+// bit1 = B+
+// bit2 = A-
+// bit3 = B-
+// bit4 = EnableA
+// bit5 = EnableB
+// bit6 = unused
+// bit7 = unused
+// For half steps, disable the H bridge not in use so that it does not slow rotation of the stepper by fighting back emf
+// For full steps, both bridges are always enabled.
+// Once position has been reached, can disable the drivers to save power. Can not do this if controlling the electron gun since the arm is not always
+// fully counterlevered.
+uint8 halfStep[8] = {B00110011, B00010010, B00110110, B001001000, B00111100, B00101000, B00111001, B00010001};
+uint8 fullStep[4] = {B00110011, B00110110, B00111100, B00111001};
+
