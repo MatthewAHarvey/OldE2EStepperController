@@ -39,22 +39,13 @@ $1SP300Y&
 $1SO0}&
 */
 #include "Stepper.h"
+#include "SerialChecker.h"
 #include "MicroTimer.h"
 #include "MCP3208.h"
 
 // Comms settings
-const long baudrate = 250000;
-
-const char stx = '$';
-const char etx = '&'; 
-const char ACK = 'A';//6; Acknowledge char
-const char NAK = 'N';//21; Not Acknowledge car
-
-uint8_t msgIndex;
-uint8_t msgLen;
-static const uint8_t maxLen = 13;
-char message[maxLen]; // max length of a message. NOT terminated by \0   
-char msgChecksum;
+// Upgrade to SerialChecker with 1 address char. Checksums are off by default and are set to on by the labview code when connection is established. Disabled again when the labview program quits.
+SerialChecker sc(Serial);
 
 // Init MCP3208 ADC chip
 MCP3208 adc(53);
@@ -68,21 +59,15 @@ Stepper *stepperP; // pointer to stepper class instances.
 // Program event timer
 MicroTimer eventTimer(5e5);
 
-// Serial comms. variables
-char ID;
-char commandType;
-char command;
-long value;
-
 bool running = false;
 bool checkAngleValidity = true;
 bool checkOptos = true;
 
 void setup(){
-    Serial.begin(250000);
-    //Serial.println("Connected to Stepper Controller. Running: TestStepperClassV2.ino");
-    Serial.println("$SC&");
-    //Serial.println();
+    sc.init();
+    sc.setAddressLen(1);
+    sc.enableAckNak();
+
     adc.begin();
     Analyser1.init();
     Analyser2.init();
@@ -97,13 +82,6 @@ void setup(){
     pinMode(6, INPUT); // D6 = PH3 = A1 MaxOP
     pinMode(3, INPUT); // D3 = PE5 = A1 Max
     pinMode(2, INPUT); // D2 = PE4 = A1 Min
-
-    //Analyser1.setTargetPos(50000);
-    //Analyser2.setTargetPos(50000);
-    //EGun.setTargetPos(50000);
-//    Serial.print("Current Angle: "); Serial.println(EGun.readAngle());
-//    Serial.print("Target Angle: "); Serial.println(500);
-//    Serial.print("Steps to move: "); Serial.println(EGun.angleToSteps(500 - EGun.readAngle()));
 }
 
 void loop(){   
@@ -171,134 +149,52 @@ bool optoFlags(){
 }
 
 void checkSerial(){
-    while(Serial.available()) {
-        char in = Serial.read();
-        if(in == stx){
-            msgIndex = 0;
-        }
-        else if(in != etx && msgIndex < maxLen){
-            //add to message
-            message[msgIndex] = in;
-            msgIndex++;
-        }
-        else if(in == etx){
-            // message complete so calculate the checksum and compare it
-            message[msgIndex] = '\0';
-            if(msgIndex > 2){ // make sure message is atleast 3 chars long
-                msgLen = msgIndex - 1;
-                msgChecksum = message[msgLen];
-                message[msgLen] = '\0';
-                //Serial.println(calcChecksum(message, msgLen));
-                if(msgChecksum == calcChecksum(message, msgLen)){
-                    parseMessage();
-                }
-                else{
-                    Serial.print(NAK);
-                }
-            }
-            else{
-                Serial.print(NAK);
-            }
-            // reset megIndex for next message
-            msgIndex = 0;
-        }
-        else
-        {
-            // message too long so scrap it and start again.
-            msgIndex = 0;
-            Serial.print(NAK);
-        } 
-    } 
-}
-
-char calcChecksum(char* rawMessage, int len){
-    unsigned int checksum=0;
-    for(int i = 0; i < len; i++)
-    { //add the command
-        checksum += rawMessage[i];
+    // If sc.check() returns a 0 then no message has been received. Use return guard to avoid nested ifs.
+    if(!sc.check()){
+        return;
     }
-    //Calculate checksum based on MPS manual
-    checksum = ~checksum+1; //the checksum is currently a unsigned 16bit int. Invert all the bits and add 1.
-    checksum = 0x7F & checksum; // discard the 8 MSBs and clear the remaining MSB (B0000000001111111)
-    checksum = 0x40 | checksum; //bitwise or bit6 with 0x40 (or with a seventh bit which is set to 1.) (B0000000001000000)
-    return (char) checksum;
-}
+    // Got this far? Must have new message!
+    char address = sc.getAddress();
+    int16_t value = sc.toInt16();
+    if(address == '1')                            stepperP = &Analyser1;
+    else if(address == '2')                       stepperP = &Analyser2;
+    else if(address == '3')                       stepperP = &EGun;
+    else if(address == 'I' && sc.contains("D")) { sc.println("SC"); stepperP = NULL; }
 
-void parseMessage()
-{
-    //Serial.print("Start: ");
-    //Serial.print(millis());
-    ID = message[0];
-    commandType = message[1];
-    command = message[2];
-    value = messageToInt(3); //toInt actually converts to long. Good.
-    //Serial.print(" : ");
-    //Serial.println(millis());
-    //value = 
-    //Serial.print("Received:"); 
-    //Serial.print(ID); 
-    //Serial.print(commandType); 
-    //Serial.print(command); 
-    //Serial.println(value);
-    //Serial.println();
-    
-    if(ID == '1')       stepperP = &Analyser1;
-    else if(ID == '2')  stepperP = &Analyser2;
-    else if(ID == '3')  stepperP = &EGun;
-    else if(ID == 'I' && commandType == 'D'){ Serial.println("$SC&"); stepperP = NULL; }
-    else { stepperP = NULL; }// Serial.print("Bad ID: "); Serial.println(ID); Serial.println(); }
-    
-    if(commandType == 'S'){
-        if     (command == 'S') { stepperP->stopMotor(); Serial.print(ACK); }
-        else if(command == 'Z') { stepperP->setStepsToMove(value); Serial.print(ACK); }
-        else if(command == 'A') { stepperP->setAccelRate((double) value);  Serial.print(ACK); }
-        else if(command == 'M') { stepperP->setMaxRate((double) value); Serial.print(ACK); }
-        else if(command == 'm') { stepperP->setMinRate((double) value); Serial.print(ACK); }
-        else if(command == 'e') { stepperP->setMaxAngle(value); Serial.print(ACK); }
-        else if(command == 'E') { stepperP->setMaxAngleOP(value); Serial.print(ACK); }
-        else if(command == 'F') { stepperP->setMinAngle(value); Serial.print(ACK); }
-        else if(command == 'C') { stepperP->setAnalyserCrashAngle(value); Serial.print(ACK); }
-        else if(command == 'H') { stepperP->setHoldCurrentFlag(value); Serial.print(ACK); }
-        else if(command == 'P') { moveStepper(value); Serial.print(ACK); }
-        else if(command == 'O') { checkOptos = (bool) value; Serial.print(ACK); }
-        else if(command == 'V') { checkAngleValidity = (bool) value; Serial.print(ACK); }
-        //else { Serial.print(NAK); }
+    if(sc.contains("ID"))       { sc.println("SC"); }
+    else if(sc.contains("S")){
+        if(sc.contains("SS"))       { stepperP->stopMotor(); sc.sendAck(); }
+        else if(sc.contains("SZ"))  { stepperP->setStepsToMove(value); sc.sendAck(); }
+        else if(sc.contains("SA"))  { stepperP->setAccelRate((double) value); sc.sendAck(); }
+        else if(sc.contains("SM"))  { stepperP->setMaxRate((double) value); sc.sendAck(); }
+        else if(sc.contains("Sm"))  { stepperP->setMinRate((double) value); sc.sendAck(); }
+        else if(sc.contains("Se"))  { stepperP->setMaxAngle(value); sc.sendAck(); }
+        else if(sc.contains("SE"))  { stepperP->setMaxAngleOP(value); sc.sendAck(); }
+        else if(sc.contains("SF"))  { stepperP->setMinAngle(value); sc.sendAck(); }
+        else if(sc.contains("SC"))  { stepperP->setAnalyserCrashAngle(value); sc.sendAck(); }
+        else if(sc.contains("SH"))  { stepperP->setHoldCurrentFlag(value); sc.sendAck(); }
+        else if(sc.contains("SP"))  { moveStepper(address, value); sc.sendAck(); }
+        else if(sc.contains("SO"))  { checkOptos = (bool) value; sc.sendAck(); }
+        else if(sc.contains("SV"))  { checkAngleValidity = (bool) value; sc.sendAck(); }
     }
-    else if(commandType == 'G'){
-        if     (command == 'H'){ Serial.println(stepperP->getHoldCurrent()); }
-        else if(command == 'V'){ Serial.println(stepperP->readPotVoltage()); }
-        else if(command == 'P'){ Serial.println(stepperP->readAngle()); }
-        else if(command == 'F'){ Serial.println(getFlags()); }
-        else if(command == 'S'){ Serial.println(getMovingStatus()); }
+    else if(sc.contains("G")){
+        if(sc.contains("GH"))       { sc.println(stepperP->getHoldCurrent()); }
+        else if(sc.contains("GV"))  { sc.println(stepperP->readPotVoltage()); }
+        else if(sc.contains("GP"))  { sc.println(stepperP->readAngle()); }
+        else if(sc.contains("GF"))  { sc.println(getFlags()); }
+        else if(sc.contains("GS"))  { sc.println(getMovingStatus()); }
+    }
+    else{
+        sc.sendNak(); // command not recognised
     }
 }
 
-
-uint16_t messageToInt(uint8_t startIndex){
-    // Returns the number stored in a char array, starting at startIndex
-    uint16_t number = 0;
-    bool negative = false;
-    if( message[startIndex] == '-'){
-        negative = true;
-        startIndex++;
-    }
-    for(int i = startIndex; i < msgLen; i++) 
-    {
-        number *= 10;
-        number += (message[i] -'0');
-    }
-    if(negative){
-        number *= -1;
-    }
-    return number;
-}
-
-bool moveStepper(int targetAngle){
+bool moveStepper(char address, int targetAngle){
     if(checkAngleValidity)
     {
         // First check whether the target angle is valid
         // Second check whether the other steppers current or target positions would cause a collision
-        if(ID == '3'){ 
+        if(address == '3'){ 
             // Is angle valid?
             if(targetAngle < EGun.getMinAngle() || targetAngle > EGun.getMaxAngleOP()){
                 // Serial.println("Angle not valid.");
@@ -347,7 +243,7 @@ bool moveStepper(int targetAngle){
                 // Need to test position relative to other analyser
                 int otherAnalyserAng;
                 int otherAnalyserTargetAng;
-                if(ID == '2'){
+                if(address == '2'){
                     otherAnalyserAng = Analyser1.readAngle();
                     otherAnalyserTargetAng = Analyser1.getTargetAngle();
                 }
