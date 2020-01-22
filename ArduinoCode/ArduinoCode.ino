@@ -148,18 +148,26 @@ bool optoFlags(){
     return false;
 }
 
+void types(String a){Serial.println("it's a String");}
+void types(int a)   {Serial.println("it's an int");}
+void types(char* a) {Serial.println("it's a char*");}
+void types(float a) {Serial.println("it's a float");}
+
 void checkSerial(){
     // If sc.check() returns a 0 then no message has been received. Use return guard to avoid nested ifs.
     if(!sc.check()){
         return;
     }
-    // Got this far? Must have new message!
-    char address = sc.getAddress();
+    char address = sc.getAddressChar();
+
     int16_t value = sc.toInt16();
-    if(address == '1')                            stepperP = &Analyser1;
-    else if(address == '2')                       stepperP = &Analyser2;
-    else if(address == '3')                       stepperP = &EGun;
-    else if(address == 'I' && sc.contains("D")) { sc.println("SC"); stepperP = NULL; }
+    
+    if(sc.addressMatch("1"))      stepperP = &Analyser1;
+    else if(sc.addressMatch("2")) stepperP = &Analyser2;
+    else if(sc.addressMatch("3")) stepperP = &EGun;
+    else if(sc.addressMatch("I") && sc.contains("D")){
+        sc.println("SC"); stepperP = NULL; return;
+    }
 
     if(sc.contains("ID"))       { sc.println("SC"); }
     else if(sc.contains("S")){
@@ -271,50 +279,15 @@ bool moveStepper(char address, int targetAngle){
     }
 }
 
-bool A1MinFlag(){
-    // D2 = PE4
-    return (1 << 4) & PINE; // mask off the 4th bit of PORTE
-}
-
-bool A1MaxOPFlag(){
-    // D3 = PE5
-    return (1 << 5) & PINE; // mask off the 4th bit of PORTE
-}
-
-bool A1MaxFlag(){
-    // D6 = PH3
-    return (1 << 3) & PINH; // mask off the 4th bit of PORTE
-}
-
-bool A2MinFlag(){
-    // D19 = PD2
-    return (1 << 2) & PIND; // mask off the 4th bit of PORTE
-}
-
-bool A2MaxOPFlag(){
-    // D18 = PD3
-    return (1 << 3) & PIND; // mask off the 4th bit of PORTE
-}
-
-bool A2MaxFlag(){
-    // D15 = PJ0
-    return (1 << 0) & PINJ; // mask off the 4th bit of PORTE
-}
-
-bool A2CrashLeftFlag(){
-    // D7 = PH4
-    return (1 << 4) & PINH;
-}
-
-bool A2CrashRightFlag(){
-    // D14 = PJ1
-    return (1 << 1) & PINJ;
-}
-
-bool EGunOPFlag(){
-    // D9 = PH6
-    return (1 << 6) & PINH;
-}
+bool A1MinFlag(){       return (1 << 4) & PINE; } // mask off the 4th bit of PORTE // D2 = PE4
+bool A1MaxOPFlag(){     return (1 << 5) & PINE; } // mask off the 4th bit of PORTE // D3 = PE5
+bool A1MaxFlag(){       return (1 << 3) & PINH; } // mask off the 4th bit of PORTE // D6 = PH3
+bool A2MinFlag(){       return (1 << 2) & PIND; } // mask off the 4th bit of PORTE // D19 = PD2
+bool A2MaxOPFlag(){     return (1 << 3) & PIND; } // mask off the 4th bit of PORTE // D18 = PD3
+bool A2MaxFlag(){       return (1 << 0) & PINJ; } // mask off the 4th bit of PORTE // D15 = PJ0
+bool A2CrashLeftFlag(){ return (1 << 4) & PINH; } // D7 = PH4
+bool A2CrashRightFlag(){return (1 << 1) & PINJ; } // D14 = PJ1
+bool EGunOPFlag(){      return (1 << 6) & PINH; } // D9 = PH6
 
 int getFlags(){
     // Returns all of the flags as the 9 least significant bits of an int.
