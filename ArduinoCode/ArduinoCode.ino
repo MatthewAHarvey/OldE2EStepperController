@@ -179,11 +179,13 @@ void checkSerial(){
         else if(sc.contains("Se"))  { stepperP->setMaxAngle(value); sc.sendAck(); }
         else if(sc.contains("SE"))  { stepperP->setMaxAngleOP(value); sc.sendAck(); }
         else if(sc.contains("SF"))  { stepperP->setMinAngle(value); sc.sendAck(); }
-        else if(sc.contains("SC"))  { stepperP->setAnalyserCrashAngle(value); sc.sendAck(); }
+        else if(sc.contains("Sc"))  { stepperP->setAnalyserCrashAngle(value); sc.sendAck(); }
         else if(sc.contains("SH"))  { stepperP->setHoldCurrentFlag(value); sc.sendAck(); }
         else if(sc.contains("SP"))  { moveStepper(address, value); sc.sendAck(); }
         else if(sc.contains("SO"))  { checkOptos = (bool) value; sc.sendAck(); }
         else if(sc.contains("SV"))  { checkAngleValidity = (bool) value; sc.sendAck(); }
+        else if(sc.contains("SC1")) { sc.enableChecksum(); sc.sendAck(); }
+        else if(sc.contains("SC0")) { sc.disableChecksum(); sc.sendAck(); }
     }
     else if(sc.contains("G")){
         if(sc.contains("GH"))       { sc.println(stepperP->getHoldCurrent()); }
