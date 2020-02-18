@@ -148,10 +148,10 @@ bool optoFlags(){
     return false;
 }
 
-void types(String a){Serial.println("it's a String");}
-void types(int a)   {Serial.println("it's an int");}
-void types(char* a) {Serial.println("it's a char*");}
-void types(float a) {Serial.println("it's a float");}
+// void types(String a){Serial.println("it's a String");}
+// void types(int a)   {Serial.println("it's an int");}
+// void types(char* a) {Serial.println("it's a char*");}
+// void types(float a) {Serial.println("it's a float");}
 
 void checkSerial(){
     // If sc.check() returns a 0 then no message has been received. Use return guard to avoid nested ifs.
@@ -169,8 +169,7 @@ void checkSerial(){
         sc.println("SC"); stepperP = NULL; return;
     }
 
-    if(sc.contains("ID"))       { sc.println("SC"); }
-    else if(sc.contains("S")){
+    if(sc.contains("S")){
         if(sc.contains("SS"))       { stepperP->stopMotor(); sc.sendAck(); }
         else if(sc.contains("SZ"))  { stepperP->setStepsToMove(value); sc.sendAck(); }
         else if(sc.contains("SA"))  { stepperP->setAccelRate((double) value); sc.sendAck(); }
@@ -194,6 +193,7 @@ void checkSerial(){
         else if(sc.contains("GF"))  { sc.println(getFlags()); }
         else if(sc.contains("GS"))  { sc.println(getMovingStatus()); }
     }
+    else if(sc.contains("ID"))      { sc.println("SC"); }
     else{
         sc.sendNak(); // command not recognised
     }
